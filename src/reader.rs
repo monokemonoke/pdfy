@@ -1,6 +1,7 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
+    str::from_utf8,
 };
 
 use crate::utils;
@@ -59,6 +60,9 @@ impl PdfReader {
 
         let trailer_pos = self.get_tailer_obj_position().unwrap();
         dbg!(&trailer_pos);
+
+        let trailer_obj = self.parse_obj(trailer_pos).unwrap();
+        dbg!(&trailer_obj);
     }
 
     fn check_eof_with_limit(&self) -> Result<u64, &str> {
@@ -161,5 +165,33 @@ impl PdfReader {
         }
 
         Err("trailerが見つかりませんでした")
+    }
+
+    fn parse_obj(&self, obj_pos: u64) -> Result<String, &str> {
+        let mut reader = BufReader::new(&self._file);
+        reader.seek(SeekFrom::Start(obj_pos)).or(Err("IOエラー"))?;
+
+        let mut obj = String::new();
+        loop {
+            let mut buf = [0; 1];
+            reader.read_exact(&mut buf).or(Err("IOエラー"))?;
+
+            match &buf {
+                b">" => {
+                    obj.push_str(">");
+                    reader.read_exact(&mut buf).or(Err("IOエラー"))?;
+                    match &buf {
+                        b">" => {
+                            obj.push_str(">");
+                            break;
+                        }
+                        s => obj.push_str(from_utf8(s).or(Err("IOエラー"))?),
+                    }
+                }
+                s => obj.push_str(from_utf8(s).or(Err("IOエラー"))?),
+            };
+        }
+
+        Ok(obj)
     }
 }
