@@ -68,8 +68,7 @@ impl PdfReader {
         for _ in 0..CHECK_EOF_LIMIT {
             let line = utils::read_previous_line(&mut reader).or(Err("IOエラー"))?;
             if line.starts_with("%%EOF") {
-                let pos = reader.stream_position().or(Err("IOエラー"))?;
-                return Ok(pos);
+                return reader.stream_position().or(Err("IOエラー"));
             }
         }
 
@@ -146,8 +145,7 @@ impl PdfReader {
         for _ in 0..CHECK_EOF_LIMIT {
             let line = utils::read_previous_line(&mut reader).or(Err("IOエラー"))?;
             if line.starts_with("trailer") {
-                let pos = reader.stream_position().or(Err("IOエラー"))?;
-                return Ok(pos);
+                return reader.stream_position().or(Err("IOエラー"));
             }
         }
 
