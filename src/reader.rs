@@ -54,8 +54,11 @@ impl PdfReader {
         let xref_pos = self.parse_xref_table_pos(eof_pos).unwrap();
         dbg!(&xref_pos);
 
-        let table = self.parse_xref_table(xref_pos).unwrap();
-        dbg!(&table);
+        let _table = self.parse_xref_table(xref_pos).unwrap();
+        // dbg!(&table);
+
+        let trailer_pos = self.get_tailer_position().unwrap();
+        dbg!(&trailer_pos);
     }
 
     fn check_eof_with_limit(&self) -> Result<u64, &str> {
@@ -134,5 +137,20 @@ impl PdfReader {
         }
 
         Ok(table)
+    }
+
+    fn get_tailer_position(&self) -> Result<u64, &str> {
+        let mut reader = BufReader::new(&self._file);
+        reader.seek(SeekFrom::End(-1)).or(Err("IOエラー"))?;
+
+        for _ in 0..CHECK_EOF_LIMIT {
+            let line = utils::read_previous_line(&mut reader).or(Err("IOエラー"))?;
+            if line.starts_with("trailer") {
+                let pos = reader.stream_position().or(Err("IOエラー"))?;
+                return Ok(pos);
+            }
+        }
+
+        Err("trailerが見つかりませんでした")
     }
 }
