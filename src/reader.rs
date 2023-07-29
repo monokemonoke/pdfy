@@ -57,7 +57,7 @@ impl PdfReader {
         let _table = self.parse_xref_table(xref_pos).unwrap();
         // dbg!(&table);
 
-        let trailer_pos = self.get_tailer_position().unwrap();
+        let trailer_pos = self.get_tailer_obj_position().unwrap();
         dbg!(&trailer_pos);
     }
 
@@ -138,13 +138,24 @@ impl PdfReader {
         Ok(table)
     }
 
-    fn get_tailer_position(&self) -> Result<u64, &str> {
+    fn get_tailer_obj_position(&self) -> Result<u64, &str> {
         let mut reader = BufReader::new(&self._file);
         reader.seek(SeekFrom::End(-1)).or(Err("IOエラー"))?;
 
         for _ in 0..CHECK_EOF_LIMIT {
             let line = utils::read_previous_line(&mut reader).or(Err("IOエラー"))?;
+
             if line.starts_with("trailer") {
+                // objectが始まる位置まで読み飛ばす
+                let mut buf = [0; 1];
+                while reader
+                    .read(&mut buf)
+                    .ok()
+                    .filter(|_| &buf == b"<")
+                    .is_none()
+                {}
+                reader.seek(SeekFrom::Current(-1)).or(Err("IOエラー"))?;
+
                 return reader.stream_position().or(Err("IOエラー"));
             }
         }
