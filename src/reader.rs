@@ -60,12 +60,13 @@ impl PdfReader {
 
     fn check_eof_with_limit(&self) -> Result<u64, &str> {
         let mut reader = BufReader::new(&self._file);
-        reader.seek(SeekFrom::End(-1)).unwrap();
+        reader.seek(SeekFrom::End(-1)).or(Err("IOエラー"))?;
 
         for _ in 0..CHECK_EOF_LIMIT {
-            let line = utils::read_previous_line(&mut reader).unwrap();
+            let line = utils::read_previous_line(&mut reader).or(Err("IOエラー"))?;
             if line.starts_with("%%EOF") {
-                return Ok(reader.stream_position().unwrap());
+                let pos = reader.stream_position().or(Err("IOエラー"))?;
+                return Ok(pos);
             }
         }
 
@@ -74,72 +75,56 @@ impl PdfReader {
 
     fn parse_xref_table_pos(&self, eof_pos: u64) -> Result<u64, &str> {
         let mut reader = BufReader::new(&self._file);
-        reader.seek(SeekFrom::Start(eof_pos)).unwrap();
+        reader.seek(SeekFrom::Start(eof_pos)).or(Err("IOエラー"))?;
 
-        let xref_byte = utils::read_previous_line(&mut reader).unwrap();
-        match xref_byte.parse::<u64>() {
-            Err(_) => Err("xref tableの場所がパースできませんでした"),
-            Ok(n) => Ok(n),
-        }
+        utils::read_previous_line(&mut reader)
+            .or(Err("IOエラー"))?
+            .parse::<u64>()
+            .or(Err("xref tableの場所がパースできませんでした"))
     }
 
     fn parse_xref_table(&self, xref_pos: u64) -> Result<Vec<XrefRecord>, &str> {
         let mut reader = BufReader::new(&self._file);
-        reader.seek(SeekFrom::Start(xref_pos)).unwrap();
+        reader.seek(SeekFrom::Start(xref_pos)).or(Err("IOエラー"))?;
 
         let mut buf = [0; 4];
-        reader.read(&mut buf).unwrap();
+        reader.read(&mut buf).or(Err("IOエラー"))?;
         if !buf.starts_with(b"xref") {
-            reader.seek(SeekFrom::Current(-4)).unwrap();
+            reader.seek(SeekFrom::Current(-4)).or(Err("IOエラー"))?;
         }
 
         let mut buf = [0; 1];
         loop {
-            reader.read(&mut buf).unwrap();
+            reader.read(&mut buf).or(Err("IOエラー"))?;
             if &buf != b"\n" && &buf != b"\r" {
-                reader.seek(SeekFrom::Current(-1)).unwrap();
+                reader.seek(SeekFrom::Current(-1)).or(Err("IOエラー"))?;
                 break;
             }
         }
 
         let mut buf = String::new();
         reader.read_line(&mut buf).unwrap();
-        let buf = buf.trim().split(' ').nth(1);
-        let buf = if let Some(s) = buf {
-            s
-        } else {
-            return Err("オブジェクトの総数を取得できませんでした");
-        };
-        let objects_length: u64 = if let Ok(n) = buf.parse() {
-            n
-        } else {
-            return Err("オブジェクトの総数を取得できませんでした");
-        };
-
-        dbg!(&objects_length);
+        let objects_length = buf
+            .trim()
+            .split(' ')
+            .nth(1)
+            .ok_or("cannot parse object's lengths")?
+            .parse::<u64>()
+            .or(Err("cannot parse object's lengths"))?;
 
         let mut table: Vec<XrefRecord> = Vec::new();
         for _ in 0..objects_length {
             let mut buf = String::new();
-            reader.read_line(&mut buf).unwrap();
+            reader.read_line(&mut buf).or(Err("IOエラー"))?;
 
             let row: Vec<&str> = buf.split_whitespace().collect();
             let (byte, gen, obj_type) = match row[..] {
                 [byte, gen, obj_type] => (byte, gen, obj_type),
-                _ => return Err("オブジェクトの総数を取得できませんでした"),
+                _ => return Err("cannot parse object's lengths"),
             };
-            let byte: u64 = match byte.parse() {
-                Ok(n) => n,
-                Err(_) => return Err("オブジェクトの総数を取得できませんでした"),
-            };
-            let generation: u64 = match gen.parse() {
-                Ok(n) => n,
-                Err(_) => return Err("オブジェクトの総数を取得できませんでした"),
-            };
-            let obj_type: ObjType = match ObjType::new(obj_type) {
-                Ok(t) => t,
-                Err(_) => return Err("オブジェクトの総数を取得できませんでした"),
-            };
+            let byte: u64 = byte.parse().or(Err("cannot parse obj info"))?;
+            let generation: u64 = gen.parse().or(Err("cannot parse obj info"))?;
+            let obj_type = ObjType::new(obj_type).or(Err("cannot parse obj info"))?;
 
             table.push(XrefRecord {
                 byte,
