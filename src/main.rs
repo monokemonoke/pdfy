@@ -4,7 +4,9 @@ mod reader;
 mod utils;
 
 fn main() {
-    let pdf = PdfReader::new("202006tabataiga.pdf").unwrap();
+    let file = std::env::args().nth(1).expect("file name is required");
+
+    let pdf = PdfReader::new(&file).unwrap();
 
     dbg!(&pdf);
 

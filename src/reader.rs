@@ -25,6 +25,20 @@ pub enum ObjType {
     N,
 }
 
+#[derive(Debug)]
+#[allow(dead_code)]
+struct ObjectRef {
+    id: u64,
+    generation: u64,
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+struct TrailerObjct {
+    size: u64,
+    info: ObjectRef,
+}
+
 impl ObjType {
     pub fn new(str: &str) -> Result<Self, ()> {
         match str {
@@ -61,7 +75,7 @@ impl PdfReader {
         let trailer_pos = self.get_tailer_obj_position().unwrap();
         dbg!(&trailer_pos);
 
-        let trailer_obj = self.parse_obj(trailer_pos).unwrap();
+        let trailer_obj = self.parse_trailer_obj(trailer_pos).unwrap();
         dbg!(&trailer_obj);
     }
 
@@ -167,7 +181,7 @@ impl PdfReader {
         Err("trailerが見つかりませんでした")
     }
 
-    fn parse_obj(&self, obj_pos: u64) -> Result<String, &str> {
+    fn parse_trailer_obj(&self, obj_pos: u64) -> Result<TrailerObjct, &'static str> {
         let mut reader = BufReader::new(&self._file);
         reader.seek(SeekFrom::Start(obj_pos)).or(Err("IOエラー"))?;
 
@@ -192,6 +206,25 @@ impl PdfReader {
             };
         }
 
-        Ok(obj)
+        use regex::Regex;
+
+        let size_res = Regex::new(r#"/Size (?<num>\d+)"#)
+            .or(Err("size regex is not valid"))?
+            .captures(&obj)
+            .ok_or("size param is not found")?;
+
+        let info_res = Regex::new(r#"/Info (?<id>\d+) (?<gen>\d+)"#)
+            .or(Err("info regex is not valid"))?
+            .captures(&obj)
+            .ok_or("info param is not found")?;
+
+        let size: u64 = size_res["num"].parse().or(Err("size should be digit"))?;
+        let id: u64 = (&info_res["id"]).parse().or(Err("id should be digit"))?;
+        let generation: u64 = (&info_res["gen"]).parse().or(Err("gen should be digit"))?;
+
+        Ok(TrailerObjct {
+            size,
+            info: ObjectRef { id, generation },
+        })
     }
 }
