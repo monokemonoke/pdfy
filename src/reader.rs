@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs::File,
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
     str::from_utf8,
@@ -11,11 +12,18 @@ pub struct PdfReader {
     _file: File,
 }
 
+#[derive(Hash, PartialEq, Eq, Debug)]
+struct XrefTableKey {
+    id: u64,
+    generation: u64,
+}
+
+type XrefTable = HashMap<XrefTableKey, XrefRecord>;
+
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct XrefRecord {
     byte: u64,
-    generation: u64,
     obj_type: ObjType,
 }
 
@@ -70,7 +78,7 @@ impl PdfReader {
         dbg!(&xref_pos);
 
         let _table = self.parse_xref_table(xref_pos).unwrap();
-        // dbg!(&table);
+        dbg!(&_table);
 
         let trailer_pos = self.get_tailer_obj_position().unwrap();
         dbg!(&trailer_pos);
@@ -103,7 +111,7 @@ impl PdfReader {
             .or(Err("xref tableの場所がパースできませんでした"))
     }
 
-    fn parse_xref_table(&self, xref_pos: u64) -> Result<Vec<XrefRecord>, &str> {
+    fn parse_xref_table(&self, xref_pos: u64) -> Result<XrefTable, &str> {
         let mut reader = BufReader::new(&self._file);
         reader.seek(SeekFrom::Start(xref_pos)).or(Err("IOエラー"))?;
 
@@ -132,8 +140,8 @@ impl PdfReader {
             .parse::<u64>()
             .or(Err("cannot parse object's lengths"))?;
 
-        let mut table: Vec<XrefRecord> = Vec::new();
-        for _ in 0..objects_length {
+        let mut table = XrefTable::new();
+        for id in 0..objects_length {
             let mut buf = String::new();
             reader.read_line(&mut buf).or(Err("IOエラー"))?;
 
@@ -142,15 +150,14 @@ impl PdfReader {
                 [byte, gen, obj_type] => (byte, gen, obj_type),
                 _ => return Err("cannot parse object's lengths"),
             };
+
             let byte: u64 = byte.parse().or(Err("cannot parse obj info"))?;
             let generation: u64 = gen.parse().or(Err("cannot parse obj info"))?;
             let obj_type = ObjType::new(obj_type).or(Err("cannot parse obj info"))?;
 
-            table.push(XrefRecord {
-                byte,
-                generation,
-                obj_type,
-            })
+            let key = XrefTableKey { id, generation };
+            let record = XrefRecord { byte, obj_type };
+            table.insert(key, record);
         }
 
         Ok(table)
